@@ -70,68 +70,12 @@ def init_database():
     print("✅ База данных инициализирована")
 
 def create_test_video():
-    """Создание тестового видео для приветствия"""
-    import cv2
-    import numpy as np
-    from PIL import Image, ImageDraw, ImageFont
-    
+    """Создание простой заглушки для видео"""
     try:
-        # Создание простого видео с текстом
-        width, height = 512, 512
-        fps = 30
-        duration = 3  # 3 секунды
-        
-        # Создание кадров
-        frames = []
-        for i in range(fps * duration):
-            # Создание изображения
-            img = Image.new('RGB', (width, height), color='#FF6B6B')
-            draw = ImageDraw.Draw(img)
-            
-            # Добавление текста
-            try:
-                # Попытка использовать системный шрифт
-                font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 40)
-            except:
-                try:
-                    font = ImageFont.load_default()
-                except:
-                    font = None
-            
-            text = "БИТВА КУРЬЕРОВ"
-            if font:
-                bbox = draw.textbbox((0, 0), text, font=font)
-                text_width = bbox[2] - bbox[0]
-                text_height = bbox[3] - bbox[1]
-            else:
-                text_width, text_height = 200, 30
-            
-            x = (width - text_width) // 2
-            y = (height - text_height) // 2
-            
-            draw.text((x, y), text, fill='white', font=font)
-            
-            # Конвертация в массив numpy
-            frame = np.array(img)
-            frames.append(frame)
-        
-        # Создание видео
-        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-        out = cv2.VideoWriter('welcome_video.mp4', fourcc, fps, (width, height))
-        
-        for frame in frames:
-            out.write(cv2.cvtColor(frame, cv2.COLOR_RGB2BGR))
-        
-        out.release()
-        
-        print("✅ Тестовое видео создано")
+        print("📹 Тестовый видеофункционал: упрощен")
         return True
-        
     except Exception as e:
-        print(f"⚠️  Ошибка создания видео: {e}")
-        # Создаем пустой файл как заглушку
-        with open('welcome_video.mp4', 'wb') as f:
-            f.write(b'')
+        print(f"⚠️ Ошибка создания тестового видео: {e}")
         return False
 
 @bot.message_handler(commands=['start'])
