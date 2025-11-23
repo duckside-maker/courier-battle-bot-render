@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-ТЕЛЕГРАМ БОТ БИТВА КУРЬЕРОВ - ИСПРАВЛЕННАЯ ВЕРСИЯ С НОВОЙ АНКЕТОЙ
+ТЕЛЕГРАМ БОТ БИТВА КУРЬЕРОВ - ФИНАЛЬНАЯ ВЕРСИЯ
+Версия: welcome_message_v2.0
 """
 
 import telebot
@@ -63,22 +64,59 @@ init_db()
 @bot.message_handler(commands=['start'])
 def handle_start(message):
     """Команда /start"""
-    welcome_text = """🚚 **Добро пожаловать в Битву Курьеров!**
+    
+    # Проверяем, есть ли уже заявка от пользователя
+    try:
+        conn = sqlite3.connect('bot.db')
+        cursor = conn.cursor()
+        cursor.execute('SELECT id FROM applications WHERE user_id = ?', (message.from_user.id,))
+        existing_app = cursor.fetchone()
+        conn.close()
+        
+        if existing_app:
+            # Уже есть заявка - показываем статус
+            bot.reply_to(message, """🚚 **Добро пожаловать на БИТВУ КУРЬЕРОВ!**
 
-📋 **Что нужно сделать:**
-• Подать заявку для участия в кастинге курьеров
-• Указать ваши данные и отправить видеосообщение
-• Дождаться звонка менеджера
+🎯 **У вас уже есть поданая заявка!**
 
-📝 **Процесс подачи заявки займет 2-3 минуты**
+📋 **Ваша заявка находится на рассмотрении.**
 
 📖 **Доступные команды:**
-/start - главное меню
 /status - статус вашей заявки
-/cancel - отменить подачу заявки
+/admin - панель администратора (только для админов)
 
-👨‍💼 **Админ-команды:**
-/admin - панель администратора"""
+⏳ **Следующие шаги:**
+• В течение 1-2 дней с вами свяжется менеджер
+• Дождитесь обратной связи по телефону или email
+
+💡 **Хотите узнать статус заявки?** - используйте /status""", parse_mode='Markdown')
+            return
+    
+    except Exception as e:
+        # В случае ошибки продолжаем как обычно
+        pass
+    
+    # Если заявки нет, показываем приветствие для новых пользователей
+    welcome_text = """🚚 **Добро пожаловать на БИТВУ КУРЬЕРОВ!**
+
+С 15 декабря 2025г. по 15 января 2026г. 100 участников со всей России будут сражаться за звание Чемпиона в сфере курьерской доставки и приз в размере 1 000 000рублей💥
+
+Участникам предстоит испытать множество эмоций, проверить себя на прочность, научиться работать в команде или наоборот, доказать всем что и один в поле - воин и даже обрести популярность😎
+
+Шоу «БИТВА КУРЬЕРОВ» это real-life формат, без прекрас и навязанного luxury, ежедневные трансляции на RuTube, YouTube и VK Видео.
+
+Участие в проекте достойно оплачивается!
++ Каждый участник проекта, гарантировано получит мини-приз, стоимостью 50.000 рублей, и возможность получить 1 из 5 суперпризов:
+🏆 1.000.000 рублей
+2️⃣ 500.000 рублей
+3️⃣ 400.000 рублей
+4️⃣ 300.000 рублей
+5️⃣ 200.000 рублей
+
+Залетай в проект, не упускай возможности🦾
+
+📖 **Доступные команды:**
+/status - статус вашей заявки"""
     
     # Создаем inline keyboard с кнопкой "ПОГНАЛИ"
     markup = telebot.types.InlineKeyboardMarkup()
@@ -187,8 +225,34 @@ def handle_admin_command(message):
 def handle_callback_query(call):
     """Обработчик callback запросов от inline кнопок"""
     if call.data == "start_application":
-        # Начинаем процесс подачи заявки
         user_id = call.from_user.id
+        
+        # Проверяем, есть ли уже заявка от пользователя
+        try:
+            conn = sqlite3.connect('bot.db')
+            cursor = conn.cursor()
+            cursor.execute('SELECT id FROM applications WHERE user_id = ?', (user_id,))
+            existing_app = cursor.fetchone()
+            conn.close()
+            
+            if existing_app:
+                bot.answer_callback_query(call.id)
+                bot.send_message(call.message.chat.id, """❌ **У вас уже есть поданая заявка!**
+
+📋 **Ваша заявка находится на рассмотрении.**
+
+⏳ **Следующие шаги:**
+• В течение 1-2 дней с вами свяжется менеджер
+• Дождитесь обратной связи по телефону или email
+
+💡 **Хотите узнать статус заявки?** - используйте /status""", parse_mode='Markdown')
+                return
+                
+        except Exception as e:
+            # В случае ошибки продолжаем как обычно
+            pass
+        
+        # Если заявки нет, начинаем процесс подачи заявки
         user_states[user_id] = {
             "state": "waiting_full_name",
             "data": {}
@@ -200,132 +264,164 @@ def handle_callback_query(call):
 # ОБРАБОТЧИК ВИДЕОСООБЩЕНИЙ
 @bot.message_handler(content_types=['video'])
 def handle_video_input(message):
-    """Обработка видеосообщений для подачи заявки"""
+    """Обработчик видеосообщений"""
     user_id = message.from_user.id
     
-    # КРИТИЧЕСКИ ВАЖНО: Проверяем, если это команда - сразу выходим!
-    if message.text and message.text.startswith('/'):
-        return
-    
-    # Если пользователь не подает заявку, игнорируем
     if user_id not in user_states:
+        bot.reply_to(message, "❌ Начните подачу заявки с команды /start")
         return
     
     user_state = user_states[user_id]
-    state = user_state["state"]
     
-    # Проверяем, что это шаг с видео
-    if state != "waiting_video":
-        bot.reply_to(message, "❓ Видеосообщение не требуется на данном этапе.")
+    if user_state["state"] != "waiting_video":
+        bot.reply_to(message, "❌ Видеосообщение не требуется на данном этапе. Сначала заполните анкету полностью.")
         return
     
     # Проверяем длительность видео
     video_duration = message.video.duration
+    
     if video_duration > 60:
         bot.reply_to(message, f"❌ Видео слишком длинное ({video_duration} сек). Максимальная длительность - 60 секунд.")
         return
     
+    # Сохраняем данные в БД
     user_data = user_state["data"]
     
     try:
-        # Сохраняем заявку в БД
         conn = sqlite3.connect('bot.db')
         cursor = conn.cursor()
         
-        # Добавляем пользователя если его нет
-        cursor.execute('''
-            INSERT OR IGNORE INTO users (id, username, first_name, last_name)
-            VALUES (?, ?, ?, ?)
-        ''', (user_id, message.from_user.username, message.from_user.first_name, message.from_user.last_name))
+        # Проверяем, есть ли уже заявка от пользователя
+        cursor.execute('SELECT id FROM applications WHERE user_id = ?', (user_id,))
+        existing_app = cursor.fetchone()
         
-        # Добавляем заявку с информацией о видео
+        if existing_app:
+            # Обновляем существующую заявку
+            cursor.execute('''
+                UPDATE applications 
+                SET full_name = ?, age = ?, phone = ?, email = ?, city = ?, video_message = ?, status = 'pending'
+                WHERE user_id = ?
+            ''', (
+                user_data["full_name"],
+                user_data["age"],
+                user_data["phone"],
+                user_data["email"],
+                user_data["city"],
+                f"video_file_id: {message.video.file_id}",
+                user_id
+            ))
+        else:
+            # Создаем новую заявку
+            cursor.execute('''
+                INSERT INTO applications (user_id, full_name, age, phone, email, city, video_message, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')
+            ''', (
+                user_id,
+                user_data["full_name"],
+                user_data["age"],
+                user_data["phone"],
+                user_data["email"],
+                user_data["city"],
+                f"video_file_id: {message.video.file_id}"
+            ))
+        
+        # Сохраняем пользователя в таблицу users
         cursor.execute('''
-            INSERT INTO applications (user_id, full_name, age, phone, email, city, status)
-            VALUES (?, ?, ?, ?, ?, ?, 'pending')
-        ''', (user_id, user_data["full_name"], user_data["age"], 
-              user_data["phone"], user_data["email"], user_data["city"]))
+            INSERT OR REPLACE INTO users (id, username, first_name, last_name)
+            VALUES (?, ?, ?, ?)
+        ''', (
+            user_id,
+            message.from_user.username,
+            message.from_user.first_name,
+            message.from_user.last_name
+        ))
         
         conn.commit()
         conn.close()
         
-        # Успешное завершение
-        success_text = f"""🎉 **Заявка подана успешно!**
+        # Очищаем состояние пользователя
+        del user_states[user_id]
+        
+        # Отправляем сообщение об успешной подаче
+        success_text = f"""✅ **Заявка подана успешно!**
 
-Спасибо, {user_data["full_name"]}! Ваша заявка принята и находится на рассмотрении.
+📋 **Ваши данные:**
+👤 ФИО: {user_data["full_name"]}
+📅 Возраст: {user_data["age"]}
+📱 Телефон: {user_data["phone"]}
+📧 Email: {user_data["email"]}
+📍 Город: {user_data["city"]}
 
-📱 Менеджер свяжется с вами по номеру: {user_data["phone"]}
-📧 Или напишет на email: {user_data["email"]}
+🎥 **Видеосообщение принято** ({video_duration} сек)
 
-📋 Статус заявки можно проверить командой /status"""
+⏳ **Следующие шаги:**
+• Ваша заявка направлена на рассмотрение
+• В течение 1-2 дней с вами свяжется менеджер
+• Можете проверить статус командой /status
+
+🚀 **Удачи в Битве Курьеров!**"""
         
         bot.reply_to(message, success_text, parse_mode='Markdown')
-        
-        # Удаляем состояние пользователя
-        del user_states[user_id]
         
     except Exception as e:
         bot.reply_to(message, f"❌ Ошибка при сохранении заявки: {str(e)}")
 
-# ОБРАБОТЧИК ТЕКСТОВЫХ СООБЩЕНИЙ (ПРИОРИТЕТ НИЗКИЙ)
+# ОБРАБОТЧИК ТЕКСТОВЫХ СООБЩЕНИЙ (НИЗКИЙ ПРИОРИТЕТ)
 @bot.message_handler(content_types=['text'])
 def handle_text_input(message):
-    """Обработчик текстовых сообщений для подачи заявки"""
-    user_id = message.from_user.id
+    """Обработчик текстовых сообщений"""
     
-    # КРИТИЧЕСКИ ВАЖНО: Проверяем, если это команда - сразу выходим!
+    # Игнорируем команды - они обрабатываются выше
     if message.text.startswith('/'):
         return
     
-    # Если пользователь не подает заявку, игнорируем
+    user_id = message.from_user.id
+    
     if user_id not in user_states:
+        bot.reply_to(message, "❌ Начните подачу заявки с команды /start")
         return
     
     user_state = user_states[user_id]
-    state = user_state["state"]
     user_data = user_state["data"]
+    state = user_state["state"]
     
-    # Обрабатываем каждый шаг анкеты
-    try:
-        if state == "waiting_full_name":
-            user_data["full_name"] = message.text
-            user_state["state"] = "waiting_age"
-            bot.reply_to(message, "📅 **Шаг 2/6: Возраст**\n\nУкажите ваш возраст:")
-            
-        elif state == "waiting_age":
-            # Проверяем, что возраст является числом
-            try:
-                age = int(message.text)
-                if 16 <= age <= 80:
-                    user_data["age"] = message.text
-                    user_state["state"] = "waiting_phone"
-                    bot.reply_to(message, "📱 **Шаг 3/6: Телефон**\n\nВведите ваш номер телефона:")
-                else:
-                    bot.reply_to(message, "❌ Возраст должен быть от 16 до 80 лет. Попробуйте еще раз:")
-                    return
-            except ValueError:
-                bot.reply_to(message, "❌ Пожалуйста, введите корректный возраст (цифрами):")
+    if state == "waiting_full_name":
+        user_data["full_name"] = message.text
+        user_state["state"] = "waiting_age"
+        bot.reply_to(message, "📅 **Шаг 2/6: Возраст**\n\nСколько вам лет? (от 16 до 80)")
+        
+    elif state == "waiting_age":
+        try:
+            age = int(message.text)
+            if age < 16 or age > 80:
+                bot.reply_to(message, "❌ Возраст должен быть от 16 до 80 лет.")
                 return
+            user_data["age"] = age
+            user_state["state"] = "waiting_phone"
+            bot.reply_to(message, "📱 **Шаг 3/6: Телефон**\n\nВведите ваш номер телефона:")
+        except ValueError:
+            bot.reply_to(message, "❌ Введите корректный возраст (число).")
             
-        elif state == "waiting_phone":
-            user_data["phone"] = message.text
-            user_state["state"] = "waiting_email"
-            bot.reply_to(message, "📧 **Шаг 4/6: Email**\n\nВведите ваш email адрес:")
-            
-        elif state == "waiting_email":
-            # Простая проверка email (можно улучшить)
-            if '@' in message.text and '.' in message.text:
-                user_data["email"] = message.text
-                user_state["state"] = "waiting_city"
-                bot.reply_to(message, "📍 **Шаг 5/6: Город**\n\nОткуда Вы (город)?")
-            else:
-                bot.reply_to(message, "❌ Неверный email адрес. Попробуйте еще раз:")
-            
-        elif state == "waiting_city":
-            user_data["city"] = message.text
-            user_state["state"] = "waiting_video"
-            
-            # Создаем сообщение для подтверждения
-            confirm_text = f"""📋 **Шаг 6/6: Видеосообщение**
+    elif state == "waiting_phone":
+        user_data["phone"] = message.text
+        user_state["state"] = "waiting_email"
+        bot.reply_to(message, "📧 **Шаг 4/6: Email**\n\nВведите ваш email адрес:")
+        
+    elif state == "waiting_email":
+        email = message.text
+        if "@" not in email or "." not in email:
+            bot.reply_to(message, "❌ Введите корректный email адрес.")
+            return
+        user_data["email"] = email
+        user_state["state"] = "waiting_city"
+        bot.reply_to(message, "📍 **Шаг 5/6: Город**\n\nОткуда Вы (город)?")
+        
+    elif state == "waiting_city":
+        user_data["city"] = message.text
+        user_state["state"] = "waiting_video"
+        
+        # Создаем сообщение для подтверждения
+        confirm_text = f"""📋 **Шаг 6/6: Видеосообщение**
 
 🎥 **Перед подачей заявки**
 
@@ -334,41 +430,36 @@ def handle_text_input(message):
 Отправьте короткое видеосообщение (до 30 сек), расскажите о себе и почему вам интересен этот проект. Данное видео предназначается для отборочного жюри и не будет транслироваться в открытых источниках
 
 📎 После отправки видео ваша заявка будет подана автоматически!"""
-            
-            bot.reply_to(message, confirm_text, parse_mode='Markdown')
-            
-        elif state == "waiting_video":
-            bot.reply_to(message, "❌ Необходимо отправить видеосообщение! Нажмите на иконку микрофона и сделайте короткое видео.")
-    except Exception as e:
-        bot.reply_to(message, f"❌ Ошибка при обработке: {str(e)}")
+        
+        bot.reply_to(message, confirm_text, parse_mode='Markdown')
+        
+    elif state == "waiting_video":
+        bot.reply_to(message, "❌ Необходимо отправить видеосообщение! Нажмите на иконку микрофона и сделайте короткое видео.")
 
-# ВЕБХУК
+# Flask маршруты
+
 @app.route('/webhook', methods=['POST'])
 def webhook():
-    """Вебхук для получения обновлений от Telegram"""
-    try:
-        if flask.request.headers.get('content-type') == 'application/json':
-            json_string = flask.request.get_data().decode('utf-8')
-            update = telebot.types.Update.de_json(json_string)
-            bot.process_new_updates([update])
-            return '', 200
-        else:
-            return 'invalid content type', 403
-    except Exception as e:
-        print(f"Webhook error: {str(e)}")
-        return 'Error', 500
+    """Webhook для получения обновлений от Telegram"""
+    json_string = flask.request.get_data().decode('utf-8')
+    update = telebot.types.Update.de_json(json_string)
+    bot.process_new_updates([update])
+    return 'OK'
 
-@app.route('/health', methods=['GET'])
-def health():
-    """Проверка состояния"""
+@app.route('/health')
+def health_check():
+    """Проверка состояния бота"""
     return {
-        'status': 'ok',
-        'bot': 'running',
-        'version': 'new_survey_1.0',
-        'timestamp': datetime.now().isoformat()
+        'status': 'healthy',
+        'version': 'welcome_message_v2.0',
+        'uptime': datetime.now().isoformat()
     }
 
 if __name__ == '__main__':
+    # Устанавливаем webhook
+    bot.remove_webhook()
+    bot.set_webhook(url='https://courier-battle-bot.onrender.com/webhook')
+    
+    # Запускаем Flask сервер
     port = int(os.environ.get('PORT', 10000))
-    print(f"Запуск сервера на порту {port}")
     app.run(host='0.0.0.0', port=port, debug=False)
