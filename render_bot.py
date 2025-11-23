@@ -80,6 +80,7 @@ def handle_start(message):
 📖 **Доступные команды:**
 /start - главное меню
 /status - статус вашей заявки
+/cancel - отменить подачу заявки
 
 👨‍💼 **Админ-команды:**
 /admin - панель администратора"""
@@ -123,6 +124,10 @@ def handle_start_application(call):
 def handle_text_input(message):
     """Обработчик текстовых сообщений для подачи заявки"""
     user_id = message.from_user.id
+    
+    # Проверяем, если это команда - выходим (команда обрабатывается отдельно)
+    if message.text.startswith('/'):
+        return
     
     if user_id not in user_states:
         return
@@ -247,6 +252,62 @@ def handle_status(message):
     
     bot.reply_to(message, status_text, parse_mode='Markdown')
 
+@bot.message_handler(commands=['cancel'])
+def handle_cancel_command(message):
+    """Обработчик команды /cancel - отмена подачи заявки"""
+    user_id = message.from_user.id
+    
+    if user_id in user_states:
+        del user_states[user_id]
+        bot.reply_to(message, "❌ Подача заявки отменена.\n\nДля начала новой подачи нажмите /start")
+    else:
+        bot.reply_to(message, "ℹ️ Вы не подаете заявку в данный момент.")
+
+@bot.message_handler(commands=['admin'])
+def handle_admin_command(message):
+    """Обработчик команды /admin (только для админа)"""
+    if message.from_user.id != ADMIN_ID:
+        bot.reply_to(message, "❌ У вас нет прав для доступа к админ-панели")
+        return
+    
+    # Получаем статистику из БД
+    conn = sqlite3.connect('bot.db')
+    cursor = conn.cursor()
+    
+    cursor.execute('SELECT COUNT(*) FROM applications')
+    total_apps = cursor.fetchone()[0]
+    
+    cursor.execute("SELECT COUNT(*) FROM applications WHERE status = 'pending'")
+    pending_apps = cursor.fetchone()[0]
+    
+    cursor.execute("SELECT COUNT(*) FROM applications WHERE status = 'approved'")
+    approved_apps = cursor.fetchone()[0]
+    
+    cursor.execute("SELECT COUNT(*) FROM applications WHERE status = 'rejected'")
+    rejected_apps = cursor.fetchone()[0]
+    
+    cursor.execute('SELECT * FROM applications ORDER BY created_at DESC LIMIT 5')
+    recent_apps = cursor.fetchall()
+    
+    conn.close()
+    
+    # Формируем отчет
+    admin_text = f"""👨‍💼 **ПАНЕЛЬ АДМИНИСТРАТОРА**
+
+📊 **Статистика заявок:**
+• Всего подано: {total_apps}
+• На рассмотрении: {pending_apps}
+• Одобрено: {approved_apps}
+• Отклонено: {rejected_apps}
+
+📋 **Последние 5 заявок:**"""
+    
+    for app in recent_apps:
+        admin_text += f"""
+• {app[2]} - {app[5]} ({app[7]})"""
+    
+    bot.reply_to(message, admin_text, parse_mode='Markdown')
+
 @app.route('/webhook', methods=['POST'])
 def webhook():
     """Вебхук для получения обновлений от Telegram"""
@@ -268,7 +329,7 @@ def health():
     return {
         'status': 'ok',
         'bot': 'running',
-        'version': 'with_button_1.0',
+        'version': 'final_1.0',
         'timestamp': datetime.now().isoformat()
     }
 
