@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ТЕЛЕГРАМ БОТ БИТВА КУРЬЕРОВ - Исправленная версия на основе работающего теста
+ТЕЛЕГРАМ БОТ БИТВА КУРЬЕРОВ - ИСПРАВЛЕННАЯ ВЕРСИЯ С ПРАВИЛЬНОЙ ЛОГИКОЙ КОМАНД
 """
 
 import telebot
@@ -16,6 +16,9 @@ ADMIN_ID = 5982747122
 # Flask приложение
 app = flask.Flask(__name__)
 bot = telebot.TeleBot(BOT_TOKEN, threaded=False)
+
+# Словарь состояний пользователей
+user_states = {}
 
 # База данных
 def init_db():
@@ -51,8 +54,10 @@ def init_db():
     conn.commit()
     conn.close()
 
-# Инициализация БД при запуске
+# Инициализация БД
 init_db()
+
+# ОБРАБОТЧИКИ КОМАНД (ПРИОРИТЕТ ВЫСОКИЙ)
 
 @bot.message_handler(commands=['start'])
 def handle_start(message):
@@ -60,22 +65,11 @@ def handle_start(message):
     welcome_text = """🚚 **Добро пожаловать в Битву Курьеров!**
 
 📋 **Что нужно сделать:**
-1. Нажмите "ПОГНАЛИ" ниже 
-2. Заполните все поля анкеты
-3. Отправьте заявку
+• Подать заявку для участия в кастинге курьеров
+• Указать ваш опыт работы и транспорт
+• Дождаться звонка менеджера
 
-✅ **Требования:**
-• Опыт работы курьером от 6 месяцев
-• Собственный транспорт
-• Готовность работать по гибкому графику
-
-💰 **Преимущества:**
-• Высокий заработок
-• Гибкий график
-• Дружная команда
-
-📞 **Контакты:**
-@duckside14 - менеджер по персоналу
+📝 **Процесс подачи заявки займет 2-3 минуты**
 
 📖 **Доступные команды:**
 /start - главное меню
@@ -95,147 +89,19 @@ def handle_start(message):
     
     bot.reply_to(message, welcome_text, parse_mode='Markdown', reply_markup=markup)
 
-# Состояния пользователей для подачи заявки
-user_states = {}
-
-@bot.callback_query_handler(func=lambda call: call.data == "start_application")
-def handle_start_application(call):
-    """Обработчик кнопки ПОГНАЛИ"""
-    user_id = call.from_user.id
-    
-    # Устанавливаем состояние пользователя
-    user_states[user_id] = {
-        "state": "waiting_full_name",
-        "data": {}
-    }
-    
-    bot.answer_callback_query(call.id, "Отлично! Начинаем подачу заявки")
-    
-    # Отправляем первый вопрос
-    question_text = "📝 **Шаг 1/6: Ваше полное имя**\n\nВведите ваше полное имя:"
-    bot.edit_message_text(
-        text=question_text,
-        chat_id=call.message.chat.id,
-        message_id=call.message.message_id,
-        parse_mode='Markdown'
-    )
-
-@bot.message_handler(content_types=['text'])
-def handle_text_input(message):
-    """Обработчик текстовых сообщений для подачи заявки"""
-    user_id = message.from_user.id
-    
-    # Проверяем, если это команда - выходим (команда обрабатывается отдельно)
-    if message.text.startswith('/'):
-        return
-    
-    if user_id not in user_states:
-        return
-    
-    user_state = user_states[user_id]
-    state = user_state["state"]
-    user_data = user_state["data"]
-    
-    # Обрабатываем каждый шаг анкеты
-    if state == "waiting_full_name":
-        user_data["full_name"] = message.text
-        user_state["state"] = "waiting_phone"
-        bot.reply_to(message, "📱 **Шаг 2/6: Ваш номер телефона**\n\nВведите номер телефона:")
-        
-    elif state == "waiting_phone":
-        user_data["phone"] = message.text
-        user_state["state"] = "waiting_experience"
-        bot.reply_to(message, "🚗 **Шаг 3/6: Опыт работы**\n\nОпишите ваш опыт работы курьером (в годах и месяцах):")
-        
-    elif state == "waiting_experience":
-        user_data["experience"] = message.text
-        user_state["state"] = "waiting_transport"
-        bot.reply_to(message, "🛺 **Шаг 4/6: Транспорт**\n\nКакой у вас транспорт? (пешком, велосипед, мотоцикл, автомобиль, другой)")
-        
-    elif state == "waiting_transport":
-        user_data["transport"] = message.text
-        user_state["state"] = "waiting_city"
-        bot.reply_to(message, "📍 **Шаг 5/6: Город**\n\nВ каком городе вы хотите работать курьером?")
-        
-    elif state == "waiting_city":
-        user_data["city"] = message.text
-        user_state["state"] = "confirm"
-        
-        # Формируем сводку для подтверждения
-        summary = f"""✅ **Шаг 6/6: Проверьте данные**
-
-**ФИО:** {user_data["full_name"]}
-**Телефон:** {user_data["phone"]}
-**Опыт:** {user_data["experience"]}
-**Транспорт:** {user_data["transport"]}
-**Город:** {user_data["city"]}
-
-Все данные верны? Отправьте "ДА" чтобы подать заявку, или "НЕТ" чтобы начать заново."""
-        
-        bot.reply_to(message, summary, parse_mode='Markdown')
-        
-    elif state == "confirm":
-        if message.text.upper() == "ДА":
-            # Сохраняем заявку в БД
-            conn = sqlite3.connect('bot.db')
-            cursor = conn.cursor()
-            
-            # Проверяем, есть ли уже заявка у пользователя
-            cursor.execute('SELECT id FROM applications WHERE user_id = ?', (user_id,))
-            existing = cursor.fetchone()
-            
-            if existing:
-                # Обновляем существующую заявку
-                cursor.execute('''
-                    UPDATE applications SET 
-                    full_name = ?, phone = ?, experience = ?, transport = ?, city = ?,
-                    status = 'pending', created_at = CURRENT_TIMESTAMP
-                    WHERE user_id = ?
-                ''', (user_data["full_name"], user_data["phone"], user_data["experience"], 
-                      user_data["transport"], user_data["city"], user_id))
-            else:
-                # Создаем новую заявку
-                cursor.execute('''
-                    INSERT INTO applications (user_id, full_name, phone, experience, transport, city, status)
-                    VALUES (?, ?, ?, ?, ?, ?, 'pending')
-                ''', (user_id, user_data["full_name"], user_data["phone"], user_data["experience"], 
-                      user_data["transport"], user_data["city"]))
-            
-            conn.commit()
-            conn.close()
-            
-            # Очищаем состояние пользователя
-            del user_states[user_id]
-            
-            success_text = f"""🎉 **Заявка подана успешно!**
-
-Спасибо, {user_data["full_name"]}! Ваша заявка принята и находится на рассмотрении.
-
-📱 Менеджер свяжется с вами по номеру: {user_data["phone"]}
-
-📋 Статус заявки можно проверить командой /status"""
-            bot.reply_to(message, success_text, parse_mode='Markdown')
-            
-        elif message.text.upper() == "НЕТ":
-            # Сбрасываем заявку
-            user_states[user_id]["state"] = "waiting_full_name"
-            user_states[user_id]["data"] = {}
-            bot.reply_to(message, "❌ Заявка сброшена. \n\n📝 Введите ваше полное имя:")
-        else:
-            bot.reply_to(message, "❓ Пожалуйста, ответьте ДА или НЕТ")
-
 @bot.message_handler(commands=['status'])
 def handle_status(message):
     """Проверка статуса заявки"""
-    conn = sqlite3.connect('bot.db')
-    cursor = conn.cursor()
-    
-    cursor.execute('SELECT * FROM applications WHERE user_id = ?', (message.from_user.id,))
-    app_record = cursor.fetchone()
-    conn.close()
-    
-    if app_record:
-        status_text = f"""📋 **Статус вашей заявки:**
+    try:
+        conn = sqlite3.connect('bot.db')
+        cursor = conn.cursor()
+        
+        cursor.execute('SELECT * FROM applications WHERE user_id = ?', (message.from_user.id,))
+        app_record = cursor.fetchone()
+        conn.close()
+        
+        if app_record:
+            status_text = f"""📋 **Статус вашей заявки:**
 
 👤 ФИО: {app_record[2]}
 📱 Телефон: {app_record[3]}
@@ -247,10 +113,14 @@ def handle_status(message):
 🕐 Подана: {app_record[8]}
 
 💡 Статус "pending" означает, что ваша заявка находится на рассмотрении."""
-    else:
-        status_text = "❌ **Заявка не найдена**\n\nВы еще не подавали заявку. Нажмите /start чтобы подать заявку."
-    
-    bot.reply_to(message, status_text, parse_mode='Markdown')
+        else:
+            status_text = """❌ **Заявка не найдена**
+
+Вы еще не подавали заявку. Нажмите /start чтобы подать заявку."""
+        
+        bot.reply_to(message, status_text, parse_mode='Markdown')
+    except Exception as e:
+        bot.reply_to(message, f"❌ Ошибка при получении статуса: {str(e)}")
 
 @bot.message_handler(commands=['cancel'])
 def handle_cancel_command(message):
@@ -259,7 +129,7 @@ def handle_cancel_command(message):
     
     if user_id in user_states:
         del user_states[user_id]
-        bot.reply_to(message, "❌ Подача заявки отменена.\n\nДля начала новой подачи нажмите /start")
+        bot.reply_to(message, "✅ **Подача заявки отменена**\n\nЧтобы начать заново, нажмите /start")
     else:
         bot.reply_to(message, "ℹ️ Вы не подаете заявку в данный момент.")
 
@@ -270,29 +140,30 @@ def handle_admin_command(message):
         bot.reply_to(message, "❌ У вас нет прав для доступа к админ-панели")
         return
     
-    # Получаем статистику из БД
-    conn = sqlite3.connect('bot.db')
-    cursor = conn.cursor()
-    
-    cursor.execute('SELECT COUNT(*) FROM applications')
-    total_apps = cursor.fetchone()[0]
-    
-    cursor.execute("SELECT COUNT(*) FROM applications WHERE status = 'pending'")
-    pending_apps = cursor.fetchone()[0]
-    
-    cursor.execute("SELECT COUNT(*) FROM applications WHERE status = 'approved'")
-    approved_apps = cursor.fetchone()[0]
-    
-    cursor.execute("SELECT COUNT(*) FROM applications WHERE status = 'rejected'")
-    rejected_apps = cursor.fetchone()[0]
-    
-    cursor.execute('SELECT * FROM applications ORDER BY created_at DESC LIMIT 5')
-    recent_apps = cursor.fetchall()
-    
-    conn.close()
-    
-    # Формируем отчет
-    admin_text = f"""👨‍💼 **ПАНЕЛЬ АДМИНИСТРАТОРА**
+    try:
+        # Получаем статистику из БД
+        conn = sqlite3.connect('bot.db')
+        cursor = conn.cursor()
+        
+        cursor.execute('SELECT COUNT(*) FROM applications')
+        total_apps = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT COUNT(*) FROM applications WHERE status = 'pending'")
+        pending_apps = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT COUNT(*) FROM applications WHERE status = 'approved'")
+        approved_apps = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT COUNT(*) FROM applications WHERE status = 'rejected'")
+        rejected_apps = cursor.fetchone()[0]
+        
+        cursor.execute('SELECT * FROM applications ORDER BY created_at DESC LIMIT 5')
+        recent_apps = cursor.fetchall()
+        
+        conn.close()
+        
+        # Формируем отчет
+        admin_text = f"""👨‍💼 **ПАНЕЛЬ АДМИНИСТРАТОРА**
 
 📊 **Статистика заявок:**
 • Всего подано: {total_apps}
@@ -301,13 +172,138 @@ def handle_admin_command(message):
 • Отклонено: {rejected_apps}
 
 📋 **Последние 5 заявок:**"""
-    
-    for app in recent_apps:
-        admin_text += f"""
+        
+        for app in recent_apps:
+            admin_text += f"""
 • {app[2]} - {app[5]} ({app[7]})"""
-    
-    bot.reply_to(message, admin_text, parse_mode='Markdown')
+        
+        bot.reply_to(message, admin_text, parse_mode='Markdown')
+    except Exception as e:
+        bot.reply_to(message, f"❌ Ошибка при получении статистики: {str(e)}")
 
+# ОБРАБОТЧИК CALLBACK QUERY (инлайн кнопки)
+@bot.callback_query_handler(func=lambda call: True)
+def handle_callback_query(call):
+    """Обработчик callback запросов от inline кнопок"""
+    if call.data == "start_application":
+        # Начинаем процесс подачи заявки
+        user_id = call.from_user.id
+        user_states[user_id] = {
+            "state": "waiting_full_name",
+            "data": {}
+        }
+        
+        bot.answer_callback_query(call.id)
+        bot.send_message(call.message.chat.id, "📝 **Шаг 1/6: Ваше полное имя**\n\nВведите ваше полное имя:")
+
+# ОБРАБОТЧИК ТЕКСТОВЫХ СООБЩЕНИЙ (ПРИОРИТЕТ НИЗКИЙ)
+@bot.message_handler(content_types=['text'])
+def handle_text_input(message):
+    """Обработчик текстовых сообщений для подачи заявки"""
+    user_id = message.from_user.id
+    
+    # КРИТИЧЕСКИ ВАЖНО: Проверяем, если это команда - сразу выходим!
+    if message.text.startswith('/'):
+        return
+    
+    # Если пользователь не подает заявку, игнорируем
+    if user_id not in user_states:
+        return
+    
+    user_state = user_states[user_id]
+    state = user_state["state"]
+    user_data = user_state["data"]
+    
+    # Обрабатываем каждый шаг анкеты
+    try:
+        if state == "waiting_full_name":
+            user_data["full_name"] = message.text
+            user_state["state"] = "waiting_phone"
+            bot.reply_to(message, "📱 **Шаг 2/6: Ваш номер телефона**\n\nВведите номер телефона:")
+            
+        elif state == "waiting_phone":
+            user_data["phone"] = message.text
+            user_state["state"] = "waiting_experience"
+            bot.reply_to(message, "🚗 **Шаг 3/6: Опыт работы**\n\nОпишите ваш опыт работы курьером (в годах и месяцах):")
+            
+        elif state == "waiting_experience":
+            user_data["experience"] = message.text
+            user_state["state"] = "waiting_transport"
+            bot.reply_to(message, "🛺 **Шаг 4/6: Транспорт**\n\nКаким транспортом пользуетесь? (пешком, велосипед, автомобиль, скутер и т.д.):")
+            
+        elif state == "waiting_transport":
+            user_data["transport"] = message.text
+            user_state["state"] = "waiting_city"
+            bot.reply_to(message, "📍 **Шаг 5/6: Город**\n\nВ каком городе планируете работать?")
+            
+        elif state == "waiting_city":
+            user_data["city"] = message.text
+            user_state["state"] = "waiting_confirmation"
+            
+            # Создаем сообщение для подтверждения
+            confirm_text = f"""📋 **Шаг 6/6: Проверьте данные**
+
+👤 **ФИО:** {user_data["full_name"]}
+📱 **Телефон:** {user_data["phone"]}
+🚗 **Опыт:** {user_data["experience"]}
+🛺 **Транспорт:** {user_data["transport"]}
+📍 **Город:** {user_data["city"]}
+
+Все данные верны? Отправьте "ДА" чтобы подать заявку, или "НЕТ" чтобы начать заново."""
+            
+            bot.reply_to(message, confirm_text, parse_mode='Markdown')
+            
+        elif state == "waiting_confirmation":
+            if message.text.upper() == "ДА":
+                # Сохраняем заявку в БД
+                try:
+                    conn = sqlite3.connect('bot.db')
+                    cursor = conn.cursor()
+                    
+                    # Добавляем пользователя если его нет
+                    cursor.execute('''
+                        INSERT OR IGNORE INTO users (id, username, first_name, last_name)
+                        VALUES (?, ?, ?, ?)
+                    ''', (user_id, message.from_user.username, message.from_user.first_name, message.from_user.last_name))
+                    
+                    # Добавляем заявку
+                    cursor.execute('''
+                        INSERT INTO applications (user_id, full_name, phone, experience, transport, city, status)
+                        VALUES (?, ?, ?, ?, ?, ?, 'pending')
+                    ''', (user_id, user_data["full_name"], user_data["phone"], 
+                          user_data["experience"], user_data["transport"], user_data["city"]))
+                    
+                    conn.commit()
+                    conn.close()
+                    
+                    # Успешное завершение
+                    success_text = f"""🎉 **Заявка подана успешно!**
+
+Спасибо, {user_data["full_name"]}! Ваша заявка принята и находится на рассмотрении.
+
+📱 Менеджер свяжется с вами по номеру: {user_data["phone"]}
+
+📋 Статус заявки можно проверить командой /status"""
+                    
+                    bot.reply_to(message, success_text, parse_mode='Markdown')
+                    
+                    # Удаляем состояние пользователя
+                    del user_states[user_id]
+                    
+                except Exception as e:
+                    bot.reply_to(message, f"❌ Ошибка при сохранении заявки: {str(e)}")
+                    
+            elif message.text.upper() == "НЕТ":
+                # Сбрасываем заявку
+                user_states[user_id]["state"] = "waiting_full_name"
+                user_states[user_id]["data"] = {}
+                bot.reply_to(message, "❌ Заявка сброшена. \n\n📝 Введите ваше полное имя:")
+            else:
+                bot.reply_to(message, "❓ Пожалуйста, ответьте ДА или НЕТ")
+    except Exception as e:
+        bot.reply_to(message, f"❌ Ошибка при обработке: {str(e)}")
+
+# ВЕБХУК
 @app.route('/webhook', methods=['POST'])
 def webhook():
     """Вебхук для получения обновлений от Telegram"""
@@ -329,7 +325,7 @@ def health():
     return {
         'status': 'ok',
         'bot': 'running',
-        'version': 'final_1.0',
+        'version': 'commands_fixed_1.0',
         'timestamp': datetime.now().isoformat()
     }
 
