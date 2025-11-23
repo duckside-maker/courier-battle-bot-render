@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 ТЕЛЕГРАМ БОТ БИТВА КУРЬЕРОВ - Render Edition
-Версия для развертывания на Render.com
+Версия для развертывания на Render.com с pyTelegramBotAPI
 """
 
 import os
@@ -69,8 +69,7 @@ def init_db():
 @bot.message_handler(commands=['start'])
 def handle_start(message):
     """Обработчик команды /start"""
-    welcome_text = """
-🚚 **Добро пожаловать в Битву Курьеров!**
+    welcome_text = """🚚 **Добро пожаловать в Битву Курьеров!**
 
 📋 **Что нужно сделать:**
 1. Нажмите "Подать заявку" 
@@ -90,8 +89,7 @@ def handle_start(message):
 
 💬 **Команды:**
 /help - справка по боту
-/status - проверить статус заявки
-    """
+/status - проверить статус заявки"""
     
     markup = types.InlineKeyboardMarkup()
     apply_btn = types.InlineKeyboardButton("📝 Подать заявку", callback_data="apply")
@@ -103,8 +101,7 @@ def handle_start(message):
 @bot.message_handler(commands=['help'])
 def handle_help(message):
     """Обработчик команды /help"""
-    help_text = """
-ℹ️ **СПРАВКА ПО БОТУ**
+    help_text = """ℹ️ **СПРАВКА ПО БОТУ**
 
 📋 **Как подать заявку:**
 1. Нажмите "Подать заявку"
@@ -122,8 +119,7 @@ def handle_help(message):
 /status - статус вашей заявки
 
 👨‍💼 **Админ-команды:**
-/admin - панель администратора
-    """
+/admin - панель администратора"""
     bot.reply_to(message, help_text, parse_mode='Markdown')
 
 @bot.message_handler(commands=['status'])
@@ -146,19 +142,15 @@ def handle_status(message):
         }
         emoji = status_emoji.get(status, '❓')
         
-        status_text = f"""
-📊 **Статус вашей заявки:**
+        status_text = f"""📊 **Статус вашей заявки:**
 
 {emoji} **Статус:** {status.upper()}
-📅 **Дата подачи:** {created_at}
-        """
+📅 **Дата подачи:** {created_at}"""
     else:
-        status_text = """
-❌ **Заявка не найдена**
+        status_text = """❌ **Заявка не найдена**
 
 Вы ещё не подавали заявку на участие.
-Нажмите /start чтобы подать заявку.
-        """
+Нажмите /start чтобы подать заявку."""
     
     bot.reply_to(message, status_text, parse_mode='Markdown')
 
@@ -189,7 +181,6 @@ def handle_callback(call):
     if call.data == "apply":
         handle_application_step1(call.message)
     elif call.data == "status":
-        # Пересылаем команду /status
         handle_status(call.message)
     elif call.data.startswith("admin_"):
         handle_admin_callback(call)
@@ -202,12 +193,10 @@ def handle_application_step1(message):
     """Первый шаг заявки - ФИО"""
     user_states[message.from_user.id] = {'step': 'full_name'}
     
-    bot.reply_to(message, """
-📝 **ШАГ 1/4 - ЛИЧНЫЕ ДАННЫЕ**
+    bot.reply_to(message, """📝 **ШАГ 1/4 - ЛИЧНЫЕ ДАННЫЕ**
 
 👤 **Введите ваше полное имя:**
-(Фамилия, имя, отчество)
-    """, parse_mode='Markdown')
+(Фамилия, имя, отчество)""", parse_mode='Markdown')
 
 @bot.message_handler(func=lambda message: message.from_user.id in user_states and user_states[message.from_user.id]['step'] == 'full_name')
 def handle_full_name(message):
@@ -228,7 +217,6 @@ def handle_phone(message):
     """Обработка телефона"""
     phone = message.text.strip()
     
-    # Простая валидация телефона
     if not any(char.isdigit() for char in phone) or len(phone) < 10:
         bot.reply_to(message, "❌ Неверный номер телефона. Введите корректный номер:")
         return
@@ -267,11 +255,9 @@ def handle_experience(message):
     phone = user_states[user_id]['phone']
     city = user_states[user_id]['city']
     
-    # Сохраняем в БД
     conn = sqlite3.connect(DATABASE)
     cursor = conn.cursor()
     
-    # Проверяем, есть ли уже заявка
     cursor.execute("SELECT id FROM applications WHERE user_id = ?", (user_id,))
     existing = cursor.fetchone()
     
@@ -290,11 +276,9 @@ def handle_experience(message):
     conn.commit()
     conn.close()
     
-    # Удаляем состояние пользователя
     del user_states[user_id]
     
-    bot.reply_to(message, f"""
-🎉 **ЗАЯВКА ПОДАНА УСПЕШНО!**
+    bot.reply_to(message, f"""🎉 **ЗАЯВКА ПОДАНА УСПЕШНО!**
 
 ✅ **Данные сохранены:**
 👤 ФИО: {full_name}
@@ -305,8 +289,7 @@ def handle_experience(message):
 ⏳ Ваша заявка отправлена на рассмотрение.
 📊 Проверить статус: /status
 
-Спасибо за участие в Битве Курьеров!
-    """, parse_mode='Markdown')
+Спасибо за участие в Битве Курьеров!""", parse_mode='Markdown')
 
 def handle_admin_callback(call):
     """Обработка админ-колбэков"""
@@ -351,7 +334,7 @@ def show_admin_applications(message, status_filter):
     
     text = f"📋 **ЗАЯВКИ - {status_filter.upper()}**\n\n"
     
-    for app in applications[:10]:  # Показываем первые 10
+    for app in applications[:10]:
         app_id, user_id, full_name, phone, city, status, created_at = app
         
         status_emoji = {
@@ -361,18 +344,17 @@ def show_admin_applications(message, status_filter):
         }
         emoji = status_emoji.get(status, '❓')
         
-        text += f"""
-**{app_id}.** {emoji} {full_name}
+        text += f"""**{app_id}.** {emoji} {full_name}
 👤 ID: `{user_id}`
 📞 {phone}
 🏙️ {city}
 📅 {created_at}
-        """
+
+"""
     
     markup = types.InlineKeyboardMarkup()
     
-    # Добавляем кнопки для управления каждой заявкой
-    for app in applications[:5]:  # Только для первых 5
+    for app in applications[:5]:
         app_id = app[0]
         markup.row(
             types.InlineKeyboardButton(f"✅ {app_id}", callback_data=f"approve_{app_id}"),
@@ -388,14 +370,12 @@ def approve_application(app_id, admin_id, message):
     
     cursor.execute("UPDATE applications SET status = 'approved' WHERE id = ?", (app_id,))
     
-    # Получаем данные заявки для уведомления
     cursor.execute("SELECT user_id, full_name FROM applications WHERE id = ?", (app_id,))
     app_data = cursor.fetchone()
     
     conn.commit()
     conn.close()
     
-    # Логируем действие админа
     conn = sqlite3.connect(DATABASE)
     cursor = conn.cursor()
     cursor.execute("""
@@ -408,22 +388,18 @@ def approve_application(app_id, admin_id, message):
     if app_data:
         user_id, full_name = app_data
         try:
-            bot.send_message(user_id, f"""
-✅ **ВАША ЗАЯВКА ОДОБРЕНА!**
+            bot.send_message(user_id, f"""✅ **ВАША ЗАЯВКА ОДОБРЕНА!**
 
 Поздравляем, {full_name}!
 Ваша заявка на участие в Битве Курьеров одобрена.
 
 🏆 Скоро с вами свяжутся для дальнейших инструкций.
 
-Удачи в соревновании!
-            """, parse_mode='Markdown')
+Удачи в соревновании!""", parse_mode='Markdown')
         except:
-            pass  # Пользователь мог заблокировать бота
+            pass
     
     bot.answer_callback_query(message.id, f"Заявка {app_id} одобрена ✅")
-    
-    # Обновляем список
     show_admin_applications(message, "pending")
 
 def reject_application(app_id, admin_id, message):
@@ -433,14 +409,12 @@ def reject_application(app_id, admin_id, message):
     
     cursor.execute("UPDATE applications SET status = 'rejected' WHERE id = ?", (app_id,))
     
-    # Получаем данные заявки
     cursor.execute("SELECT user_id, full_name FROM applications WHERE id = ?", (app_id,))
     app_data = cursor.fetchone()
     
     conn.commit()
     conn.close()
     
-    # Логируем действие админа
     conn = sqlite3.connect(DATABASE)
     cursor = conn.cursor()
     cursor.execute("""
@@ -453,8 +427,7 @@ def reject_application(app_id, admin_id, message):
     if app_data:
         user_id, full_name = app_data
         try:
-            bot.send_message(user_id, f"""
-❌ **ЗАЯВКА ОТКЛОНЕНА**
+            bot.send_message(user_id, f"""❌ **ЗАЯВКА ОТКЛОНЕНА**
 
 К сожалению, {full_name}, ваша заявка на участие в Битве Курьеров отклонена.
 
@@ -464,26 +437,27 @@ def reject_application(app_id, admin_id, message):
 • Технические ограничения
 
 Попробуйте подать заявку позже.
-Удачи!
-            """, parse_mode='Markdown')
+Удачи!""", parse_mode='Markdown')
         except:
             pass
     
     bot.answer_callback_query(message.id, f"Заявка {app_id} отклонена ❌")
-    
-    # Обновляем список
     show_admin_applications(message, "pending")
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
     """Вебхук для получения обновлений от Telegram"""
-    if flask.request.headers.get('content-type') == 'application/json':
-        json_string = flask.request.get_data().decode('utf-8')
-        update = telebot.types.Update.de_json(json_string)
-        bot.process_new_updates([update])
-        return ''
-    else:
-        flask.abort(403)
+    try:
+        if flask.request.headers.get('content-type') == 'application/json':
+            json_string = flask.request.get_data().decode('utf-8')
+            update = telebot.types.Update.de_json(json_string)
+            bot.process_new_updates([update])
+            return '', 200
+        else:
+            flask.abort(403)
+    except Exception as e:
+        print(f"Webhook error: {str(e)}")
+        return 'Error', 500
 
 @app.route('/health', methods=['GET'])
 def health():
@@ -491,32 +465,31 @@ def health():
     return {
         'status': 'ok',
         'bot': 'running',
-        'version': 'render_1.0',
+        'version': 'render_3.0',
         'timestamp': datetime.now().isoformat()
     }
 
 def main():
     """Основная функция запуска бота"""
-    # Инициализация БД
-    init_db()
-    
-    # Удаляем вебхук если он был установлен
-    bot.remove_webhook()
-    
-    # Проверяем переменные окружения
-    webhook_url = os.environ.get('WEBHOOK_URL', '')
-    if webhook_url:
-        # Устанавливаем вебхук
-        bot.set_webhook(url=webhook_url)
-        print(f"✅ Webhook установлен: {webhook_url}")
-    else:
-        print("⚠️ WEBHOOK_URL не установлен")
-    
-    # Запуск Flask приложения
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port, debug=False)
-    
-    print("🚀 Бот запущен и готов к работе!")
+    try:
+        init_db()
+        
+        bot.remove_webhook()
+        
+        webhook_url = os.environ.get('WEBHOOK_URL', '')
+        if webhook_url:
+            bot.set_webhook(url=webhook_url)
+            print(f"✅ Webhook установлен: {webhook_url}")
+        else:
+            print("⚠️ WEBHOOK_URL не установлен")
+        
+        port = int(os.environ.get('PORT', 5000))
+        app.run(host='0.0.0.0', port=port, debug=False)
+        
+        print("🚀 Бот запущен и готов к работе!")
+    except Exception as e:
+        print(f"❌ Ошибка запуска: {str(e)}")
+        sys.exit(1)
 
 if __name__ == '__main__':
     main()
